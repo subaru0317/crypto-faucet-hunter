@@ -104,13 +104,13 @@ class Mouse
     recaptcha_context_datas.each do |recaptcha_context_data|
       # audio button exist?
       response = selector_to_xy(".recaptcha-checkbox-checked")
-      break if response.nil?
+      break unless response.nil?
 
       # click audio
       js = 'document.querySelector("#recaptcha-audio-button").click();'
       response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
       delay
-      sleep(10)
+      sleep(5)
       puts "click audio challenge"
 
       # download mp3
