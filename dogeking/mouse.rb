@@ -1,4 +1,7 @@
 require 'chrome_remote'
+require 'fileutils'
+require 'open-uri'
+
 # chrome_remoteでのマウス操作用クラス。
 class Mouse
   def initialize(chrome)
@@ -64,13 +67,38 @@ class Mouse
     )
   end
 
-  def selector_to_xy(selector)
-    script = <<~JS
-      var input = document.querySelector('#{selector}');
-      var box = input.getBoundingClientRect();
-      JSON.stringify([ box.left, box.right, box.top, box.bottom ]);
-    JS
-    result = @chrome.send_cmd("Runtime.evaluate", expression: script)
+  def selector_to_xy(selector, iframe_selector=nil, context_id=nil)
+    result = nil
+    if context_id.nil?
+      script = <<~JS
+        var input = document.querySelector('#{selector}');
+        var box = input.getBoundingClientRect();
+        JSON.stringify([ box.left, box.right, box.top, box.bottom ]);
+      JS
+      p result = @chrome.send_cmd("Runtime.evaluate", expression: script)
+    else
+      # js = "document.querySelector('iframe')"
+      # p iframe = @chrome.send_cmd("Runtime.evaluate", expression: js)
+      # js = "document.querySelector('iframe').contentWindow"  
+      # p iframe = @chrome.send_cmd("Runtime.evaluate", expression: js)
+      # js = "document.querySelector('iframe').contentDocument.querySelector('#recaptcha-anchor-label')"  
+      # p iframe = @chrome.send_cmd("Runtime.evaluate", expression: js)
+      # 考察
+      # doge -> recaptchaはwebsecuritydisableが必要
+      # iframe最初からならwebsecuritydisable必要ない
+      # ドメインをまたぐときはsecurityが必要？contentDocumentの同一オリジンとか詳しく見る
+      # どうせならwebsecuritydisableを使わないようにしたい->他のやつイケてるしこれがいけない理由がわからん
+      # sandbox必要？
+      # 一旦、querySelectorをiframeに固定する？指定した要素が複数あった場合のquerySelectorの挙動を調査する
+      # => 文書内の一致する最初のelementを返す。つまり、recaptchav2以外のiframeが存在した場合にOUT
+      # iframe問題は解決したが、原因は不明なままである。ここを追求する必要がある
+      script = <<~JS
+        var input = #{iframe}.contentWindow.document.querySelector('#recaptcha-anchor-label');
+        var box = input.getBoundingClientRect();
+        JSON.stringify([ box.left, box.right, box.top, box.bottom ]);
+      JS
+      result = @chrome.send_cmd("Runtime.evaluate", expression: script, contextId: context_id)
+    end
     result_val = result["result"]["value"]
     return nil if result_val.nil?
     left, right, top, bottom = JSON.parse(result_val)
@@ -84,9 +112,18 @@ class Mouse
     move(rand*50, rand*20)
   end
 
+  def find_selector(chrome, selector)
+    element = chrome.send_cmd('DOM.querySelector', {
+      nodeId: chrome.send_cmd('DOM.getDocument')['root']['nodeId'],
+      selector: selector
+    })
+  end
+
   def solve_recaptcha(context_datas, selector)
     @chrome.send_cmd('Runtime.enable')
-    js = "document.querySelector('#{selector}').name;"
+    @chrome.send_cmd('Page.enable')
+
+    js = "document.querySelector('#{selector}').name;" # ここのselector引数をtitle=recaptchaに置き換えられないか？
     response = @chrome.send_cmd('Runtime.evaluate', expression: js)
     recaptcha_iframe_tag_name = response['result']['value']
     recaptcha_frame = @chrome.send_cmd('Page.getFrameTree')['frameTree']['childFrames'].find do |child_frame|
@@ -96,55 +133,76 @@ class Mouse
       context_data['auxData']['frameId'] == recaptcha_frame['frame']['id']
     end
 
-    # click reCAPTCHA
-    click_selector('#g_recaptcha > div > div > iframe')
-    delay
-    puts "click reCAPTCHA"
+    p "click reCAPTCHA"
+    click_selector_in_iframe("#recaptcha-anchor-label", "iframe[title='reCAPTCHA']")
+    sleep 5
 
     recaptcha_context_datas.each do |recaptcha_context_data|
-      # audio button exist?
-      response = selector_to_xy(".recaptcha-checkbox-checked")
-      break unless response.nil?
+      # 動作未確認
+      p "audio button exists?"
+      js = 'document.querySelector(".recaptcha-checkbox-checked");'
+      p response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
 
-      # click audio
+      p "click audio challenge"
       js = 'document.querySelector("#recaptcha-audio-button").click();'
       response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
       delay
       sleep(5)
-      puts "click audio challenge"
 
-      # download mp3
+      p "download mp3"
       js = 'document.querySelector(".rc-audiochallenge-tdownload-link").href'
       response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
       mp3_url = response['result']['value']
       input_file_name = "audio.mp3"
       FileUtils.mv URI.open(mp3_url).path, input_file_name
       delay
-      puts "download mp3"
 
-      # convert mp3 to wav
+      p "convert mp3 to wav"
       output_file_name = "audio.wav"
       convert_mp3_to_wav(input_file_name, output_file_name)
-      puts "convert mp3 to wav"
-      
-      # decode wav to text
-      pp passcode = `python3 transcription.py`.chomp!
-      puts "decode wav to text"
 
-      # submit passcode
+      p "decode wav to text"
+      pp passcode = `python3 transcription.py`.chomp!
+
+      p "submit passcode"
       submit(@chrome, passcode, 'audio-response', recaptcha_context_data['id'])
       delay
-      puts "submit passcode"
 
-      # click verify
+      p "click verify"
       js = "document.getElementById('recaptcha-verify-button').click();"
       @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
-      puts "verify"
       
       File.delete(input_file_name)
       File.delete(output_file_name)
       break
     end
+  end  
+    
+  def click_selector_in_iframe(selector, iframe_selector)
+    x, y = selector_in_iframe_to_xy(selector, iframe_selector)
+    click(x, y)
+  end
+  
+  def selector_in_iframe_to_xy(selector, iframe_selector)
+    doc = @chrome.send_cmd('DOM.getDocument', depth: 0)
+    iframe_query_result = @chrome.send_cmd('DOM.querySelector', nodeId: doc['root']['nodeId'], selector: iframe_selector)
+    return nil if iframe_query_result.nil?
+    iframe_description = @chrome.send_cmd('DOM.describeNode', nodeId: iframe_query_result['nodeId'])
+    content_doc_remote_object = @chrome.send_cmd('DOM.resolveNode', backendNodeId: iframe_description['node']['contentDocument']['backendNodeId']);
+    content_doc_node = @chrome.send_cmd('DOM.requestNode', objectId: content_doc_remote_object['object']['objectId']);
+    element_query_result = @chrome.send_cmd('DOM.querySelector', nodeId: content_doc_node['nodeId'], selector: selector);
+    return nil if element_query_result.nil?
+    node = @chrome.send_cmd('DOM.describeNode', nodeId: element_query_result['nodeId']);
+    bounding_box = @chrome.send_cmd('DOM.getBoxModel', nodeId: node['node']['nodeId'], backendNodeId: node['node']['backendNodeId'])
+    coordinates = bounding_box['model']['content']
+    upper_left_xy = { x: coordinates[0], y: coordinates[1] }
+    upper_right_xy = { x: coordinates[2], y: coordinates[3] }
+    lower_right_xy = { x: coordinates[4], y: coordinates[5] }
+    lower_left_xy = { x: coordinates[6], y: coordinates[7] }
+    left, right, top, bottom = upper_left_xy[:x], upper_right_xy[:x], upper_left_xy[:y], lower_left_xy[:y]
+    x = rand(left..right)
+    y = rand(top..bottom)
+    [x, y]
   end
 
   private
@@ -155,15 +213,35 @@ class Mouse
   rescue => e
     puts "An error occurred: #{e.message}"
   end
+
+  def submit(chrome, message, selector, context_id=nil)
+    chrome.send_cmd('Runtime.enable')
+    message.each_char do |c|
+      js = "document.getElementById('#{selector}').value += '#{c}'"
+      if context_id.nil?
+        chrome.send_cmd('Runtime.evaluate', expression: js)
+      else
+        chrome.send_cmd('Runtime.evaluate', expression: js, contextId: context_id)
+      end
+      sleep(rand)
+    end
+  end
 end
 
 if __FILE__ == $0
   chrome = ChromeRemote.client
-  mouse = Mouse.new(chrome)
-  mouse.scroll(0,100)
-  mouse.click_selector('input[name=username]')
-  str = 'aiueo0@'
-  str.each_char do |char|
-    chrome.send_cmd('Input.dispatchKeyEvent', type: 'char', text: char)
+  context_datas = []
+  chrome.send_cmd('Runtime.enable')
+  chrome.on('Runtime.executionContextCreated') do |params|
+    context_datas << params['context']
   end
+  mouse = Mouse.new(chrome)
+
+  chrome.send_cmd("Page.enable")
+  chrome.send_cmd('Page.navigate', url: 'https://dogeking.io/login.php')
+  chrome.wait_for("Page.loadEventFired")
+  
+  # mouse.click_selector_in_iframe("#recaptcha-anchor-label", "iframe[title='reCAPTCHA']")
+  mouse.solve_recaptcha(context_datas,  "body > div:nth-child(22) > div:nth-child(4) > iframe")
 end
+
