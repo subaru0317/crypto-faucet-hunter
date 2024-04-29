@@ -80,7 +80,7 @@ class Mouse
         var box = input.getBoundingClientRect();
         JSON.stringify([ box.left, box.right, box.top, box.bottom ]);
       JS
-      p result = @chrome.send_cmd("Runtime.evaluate", expression: script)
+      result = @chrome.send_cmd("Runtime.evaluate", expression: script)
     else
       # js = "document.querySelector('iframe')"
       # p iframe = @chrome.send_cmd("Runtime.evaluate", expression: js)
