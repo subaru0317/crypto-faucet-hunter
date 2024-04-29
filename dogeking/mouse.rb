@@ -69,6 +69,9 @@ class Mouse
     )
   end
 
+  # iframe_selectorとかいるか？
+  # context_idさえ渡せばOKな感じがするぞい -> だめだった。なんでや
+  # def selector_to_xy(selector, iframe_selector=nil, context_id=nil)
   def selector_to_xy(selector, iframe_selector=nil, context_id=nil)
     result = nil
     if context_id.nil?
@@ -94,8 +97,14 @@ class Mouse
       # 一旦、querySelectorをiframeに固定する？指定した要素が複数あった場合のquerySelectorの挙動を調査する
       # => 文書内の一致する最初のelementを返す。つまり、recaptchav2以外のiframeが存在した場合にOUT
       # iframe問題は解決したが、原因は不明なままである。ここを追求する必要がある
+
       script = <<~JS
         var input = #{iframe}.contentWindow.document.querySelector('#recaptcha-anchor-label');
+        var box = input.getBoundingClientRect();
+        JSON.stringify([ box.left, box.right, box.top, box.bottom ]);
+      JS
+      script = <<~JS
+        var input = document.querySelector('#{selector}');
         var box = input.getBoundingClientRect();
         JSON.stringify([ box.left, box.right, box.top, box.bottom ]);
       JS
@@ -122,10 +131,9 @@ class Mouse
   end
 
   # 2つのiframeに対応する必要がある
-  # 1つ目が"I'm not a robot."
-  # 2つ目がreCAPTCHAチャレンジの画面
   def solve_recaptcha(context_datas)
     sleep 5
+    # 1つ目："I'm not a robot."のiframe
     js = %Q{document.querySelector('iframe[title="reCAPTCHA"]').name;}
     response = @chrome.send_cmd('Runtime.evaluate', expression: js)
     recaptcha_iframe_tag_name = response['result']['value']
@@ -147,6 +155,7 @@ class Mouse
       return if response["result"]["subtype"] == "node" # reCAPTCHAチャレンジを行わずとも✔が付いた場合はスルー
     end
 
+    # 2つ目：reCAPTCHAチャレンジのiframe
     js = %Q{document.querySelector('iframe[title="recaptcha challenge expires in two minutes"]').name;}
     response = @chrome.send_cmd('Runtime.evaluate', expression: js)
     recaptcha_iframe_tag_name = response['result']['value']
