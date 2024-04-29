@@ -121,14 +121,34 @@ class Mouse
     })
   end
 
+  # 2つのiframeに対応する必要がある
+  # 1つ目が"I'm not a robot."
+  # 2つ目がreCAPTCHAチャレンジの画面
   def solve_recaptcha(context_datas)
     sleep 5
-    #原因はsleepなしで早すぎたこと？
-    #もしくは、iframeの選択を間違えていた
-    #少なくとも、最初の画面に出ているI'
+    js = %Q{document.querySelector('iframe[title="reCAPTCHA"]').name;}
+    response = @chrome.send_cmd('Runtime.evaluate', expression: js)
+    recaptcha_iframe_tag_name = response['result']['value']
+    recaptcha_frame = @chrome.send_cmd('Page.getFrameTree')['frameTree']['childFrames'].find do |child_frame|
+      child_frame['frame']['name'] == recaptcha_iframe_tag_name
+    end
+    recaptcha_context_datas = context_datas.select do |context_data|
+      context_data['auxData']['frameId'] == recaptcha_frame['frame']['id']
+    end
+    recaptcha_context_datas.each do |recaptcha_context_data|
+      p "click reCAPTCHA"
+      js = 'document.querySelector("#recaptcha-anchor-label").click();'
+      response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
+      delay
+
+      p "audio button exists?"
+      js = 'document.querySelector(".recaptcha-checkbox-checked");'
+      response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
+      return if response["result"]["subtype"] == "node" # reCAPTCHAチャレンジを行わずとも✔が付いた場合はスルー
+    end
+
     js = %Q{document.querySelector('iframe[title="recaptcha challenge expires in two minutes"]').name;}
-    # js = %Q{document.querySelector('iframe[title="reCAPTCHA"]').name;}
-    p response = @chrome.send_cmd('Runtime.evaluate', expression: js)
+    response = @chrome.send_cmd('Runtime.evaluate', expression: js)
     recaptcha_iframe_tag_name = response['result']['value']
     recaptcha_frame = @chrome.send_cmd('Page.getFrameTree')['frameTree']['childFrames'].find do |child_frame|
       child_frame['frame']['name'] == recaptcha_iframe_tag_name
@@ -137,19 +157,7 @@ class Mouse
       context_data['auxData']['frameId'] == recaptcha_frame['frame']['id']
     end
 
-    p "click reCAPTCHA"
-    click_selector_in_iframe("#recaptcha-anchor-label", "iframe[title='reCAPTCHA']")
-    sleep 5
-
-    p recaptcha_context_datas
-
     recaptcha_context_datas.each do |recaptcha_context_data|
-      # 動作未確認
-      p "audio button exists?"
-      js = 'document.querySelector(".recaptcha-checkbox-checked");'
-      p response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
-      break unless response["result"]["value"].nil? 
-
       p "click audio challenge"
       js = 'document.querySelector("#recaptcha-audio-button").click();'
       response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
@@ -191,7 +199,7 @@ class Mouse
   end
   
   def selector_in_iframe_to_xy(selector, iframe_selector)
-    doc = @chrome.send_cmd('DOM.getDocument', depth: 0)
+    doc = @chrome.send_cmd('DOM.getDocument', depth: 0) # これ重そう。大丈夫か？
     iframe_query_result = @chrome.send_cmd('DOM.querySelector', nodeId: doc['root']['nodeId'], selector: iframe_selector)
     return nil if iframe_query_result.nil?
     iframe_description = @chrome.send_cmd('DOM.describeNode', nodeId: iframe_query_result['nodeId'])
@@ -246,7 +254,6 @@ if __FILE__ == $0
   chrome.send_cmd("Page.enable")
   chrome.send_cmd('Page.navigate', url: 'https://dogeking.io/login.php')
   chrome.wait_for("Page.loadEventFired")
-  
   # mouse.click_selector_in_iframe("#recaptcha-anchor-label", "iframe[title='reCAPTCHA']")
   mouse.solve_recaptcha(context_datas)
 end
