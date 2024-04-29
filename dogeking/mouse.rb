@@ -8,6 +8,8 @@ class Mouse
     @chrome = chrome
     @x = 0
     @y = 0
+    @chrome.send_cmd('Runtime.enable')
+    @chrome.send_cmd('Page.enable')
   end
 
   def move(x, y, steps = 100)
@@ -119,12 +121,14 @@ class Mouse
     })
   end
 
-  def solve_recaptcha(context_datas, selector)
-    @chrome.send_cmd('Runtime.enable')
-    @chrome.send_cmd('Page.enable')
-
-    js = "document.querySelector('#{selector}').name;" # ここのselector引数をtitle=recaptchaに置き換えられないか？
-    response = @chrome.send_cmd('Runtime.evaluate', expression: js)
+  def solve_recaptcha(context_datas)
+    sleep 5
+    #原因はsleepなしで早すぎたこと？
+    #もしくは、iframeの選択を間違えていた
+    #少なくとも、最初の画面に出ているI'
+    js = %Q{document.querySelector('iframe[title="recaptcha challenge expires in two minutes"]').name;}
+    # js = %Q{document.querySelector('iframe[title="reCAPTCHA"]').name;}
+    p response = @chrome.send_cmd('Runtime.evaluate', expression: js)
     recaptcha_iframe_tag_name = response['result']['value']
     recaptcha_frame = @chrome.send_cmd('Page.getFrameTree')['frameTree']['childFrames'].find do |child_frame|
       child_frame['frame']['name'] == recaptcha_iframe_tag_name
@@ -137,11 +141,14 @@ class Mouse
     click_selector_in_iframe("#recaptcha-anchor-label", "iframe[title='reCAPTCHA']")
     sleep 5
 
+    p recaptcha_context_datas
+
     recaptcha_context_datas.each do |recaptcha_context_data|
       # 動作未確認
       p "audio button exists?"
       js = 'document.querySelector(".recaptcha-checkbox-checked");'
       p response = @chrome.send_cmd('Runtime.evaluate', expression: js, contextId: recaptcha_context_data['id'])
+      break unless response["result"]["value"].nil? 
 
       p "click audio challenge"
       js = 'document.querySelector("#recaptcha-audio-button").click();'
@@ -215,7 +222,6 @@ class Mouse
   end
 
   def submit(chrome, message, selector, context_id=nil)
-    chrome.send_cmd('Runtime.enable')
     message.each_char do |c|
       js = "document.getElementById('#{selector}').value += '#{c}'"
       if context_id.nil?
@@ -231,7 +237,7 @@ end
 if __FILE__ == $0
   chrome = ChromeRemote.client
   context_datas = []
-  chrome.send_cmd('Runtime.enable')
+  chrome.send_cmd("Runtime.enable")
   chrome.on('Runtime.executionContextCreated') do |params|
     context_datas << params['context']
   end
@@ -242,6 +248,6 @@ if __FILE__ == $0
   chrome.wait_for("Page.loadEventFired")
   
   # mouse.click_selector_in_iframe("#recaptcha-anchor-label", "iframe[title='reCAPTCHA']")
-  mouse.solve_recaptcha(context_datas,  "body > div:nth-child(22) > div:nth-child(4) > iframe")
+  mouse.solve_recaptcha(context_datas)
 end
 

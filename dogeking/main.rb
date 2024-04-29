@@ -39,7 +39,7 @@ def login(chrome, mouse)
   submit(chrome, @PASSWORD, 'password')
   mouse.delay
 
-  mouse.solve_recaptcha(context_datas, "body > div:nth-child(22) > div:nth-child(4) > iframe")
+  mouse.solve_recaptcha(context_datas)
 
   # click login
   mouse.click_selector('#process_login')
@@ -57,17 +57,17 @@ def free_spin(chrome, mouse)
   goto_url(chrome, 'https://dogeking.io/games.php')
 
   # click spin game
+  puts "click spin game"
   mouse.click_selector('.game_name')
   mouse.delay
-  puts "click spin game"
 
   mouse.scroll(0, 200)
-  mouse.solve_recaptcha(context_datas, "body > div:nth-child(22) > div:nth-child(4) > iframe")
+  mouse.solve_recaptcha(context_datas)
 
   # click free spin
+  puts "click free spin"
   mouse.click_selector('#spin_wheel')
   mouse.delay
-  puts "click free spin"
 end
 
 def spin_roulette(chrome, mouse, bet_coin)
@@ -99,8 +99,8 @@ if __FILE__ == $0
   mouse = Mouse.new(chrome)
 
   login(chrome, mouse)
-  free_spin(chrome, mouse)
-  spin_roulette(chrome, mouse, '100000') # default 100000 = 100K
+  # free_spin(chrome, mouse)
+  # spin_roulette(chrome, mouse, '100000') # default 100000 = 100K
 end
 # headless modeでspinが獲得できるかを確認する
 # エラー発生時Retryするようにコードを変更する
