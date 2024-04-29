@@ -31,6 +31,10 @@ def login(chrome, mouse)
 
   goto_url(chrome, 'https://dogeking.io/login.php')
 
+  # cookie?が使える場合、login処理は行わない
+  url = get_current_url(chrome)
+  return if url == 'https://dogeking.io/games.php'
+
   # submit E-mail Address
   submit(chrome, @E_MAIL, 'user_email')
   mouse.delay
@@ -43,11 +47,11 @@ def login(chrome, mouse)
 
   # click login
   mouse.click_selector('#process_login')
-  chrome.wait_for("Page.loadEventFired")
   puts "Login!"
 end
 
 def free_spin(chrome, mouse)
+  chrome.wait_for("Page.loadEventFired")
   context_datas = []
   chrome.send_cmd('Runtime.enable')
   chrome.on('Runtime.executionContextCreated') do |params|
@@ -91,6 +95,12 @@ def spin_roulette(chrome, mouse, bet_coin)
   mouse.click_selector('#start_autobet')
 end
 
+def get_current_url(chrome)
+  js = 'location.href'
+  response = chrome.send_cmd('Runtime.evaluate', expression: js)
+  response["result"]["value"]
+end
+
 if __FILE__ == $0
   @E_MAIL = "m.kurakurakura.s@gmail.com"
   @PASSWORD = "Kantanpass!2024"
@@ -105,3 +115,4 @@ end
 # headless modeでspinが獲得できるかを確認する
 # エラー発生時Retryするようにコードを変更する
 # gcpでcron実行する
+# incognitoを使うんではなくて、urlを都度確認して、一発でhttps://dogeking.io/games.phpに入れているならfree_spinのみ、https://dogeking.io/login.phpに行っちゃったならLogin処理が走るようにした方が時間が節約できてお得。
