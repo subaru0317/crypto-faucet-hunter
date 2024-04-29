@@ -99,7 +99,7 @@ if __FILE__ == $0
   mouse = Mouse.new(chrome)
 
   login(chrome, mouse)
-  # free_spin(chrome, mouse)
+  free_spin(chrome, mouse)
   # spin_roulette(chrome, mouse, '100000') # default 100000 = 100K
 end
 # headless modeでspinが獲得できるかを確認する
