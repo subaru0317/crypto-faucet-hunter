@@ -132,7 +132,7 @@ class Mouse
 
   # 2つのiframeに対応する必要がある
   def solve_recaptcha(context_datas)
-    sleep 5
+    sleep 3
     # 1つ目："I'm not a robot."のiframe
     js = %Q{document.querySelector('iframe[title="reCAPTCHA"]').name;}
     response = @chrome.send_cmd('Runtime.evaluate', expression: js)
