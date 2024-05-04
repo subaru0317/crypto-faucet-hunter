@@ -4,6 +4,7 @@
 # setup
 クロールを開始する前に必ず実行する。
 ```
+git clone https://github.com/subaru0317/crypto-faucet-hunter.git
 bash setup.sh
 ```
 
