@@ -7,8 +7,9 @@ cloneする。
 git clone https://github.com/subaru0317/crypto-faucet-hunter.git
 ```
 
-クロールを開始する前に必ず実行する。
+クロールを開始する前に必ず実行する。１度だけ実行すればよい。
 ```
+cd crypto-faucet-hunter/
 bash setup.sh
 ```
 
