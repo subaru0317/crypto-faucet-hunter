@@ -1,7 +1,8 @@
 sudo apt -y update
 
 # ruby環境構築
-sudo apt -y install rbenv ruby-bundler
+sudo apt-get -y install ruby-full
+curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash
 rbenv install 3.1.3
 rbenv global 3.1.3
 rbenv rehash
