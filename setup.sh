@@ -15,3 +15,6 @@ sudo dpkg -i google-chrome-stable_current_amd64.deb
 
 # soxインストール
 sudo apt -y install sox libsox-fmt-mp3 libsphinxbase3
+
+# xvfbインストール
+sudo apt -y install xvfb
